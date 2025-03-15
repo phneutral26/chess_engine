@@ -33,12 +33,30 @@ def play_against_engine():
     player_is_white = color == 'w'
 
     # Set search parameters
-    depth = 4
-    time_limit = 3.0
+    while True:
+        try:
+            depth = int(input("Enter maximum search depth (3-6 recommended, default 4): ") or "4")
+            if depth < 1:
+                print("Depth must be at least 1.")
+                continue
+            break
+        except ValueError:
+            print("Please enter a valid number.")
+
+    while True:
+        try:
+            time_limit = float(input("Enter time limit in seconds (1-10 recommended, default 3): ") or "3")
+            if time_limit <= 0:
+                print("Time limit must be positive.")
+                continue
+            break
+        except ValueError:
+            print("Please enter a valid number.")
 
     print("\nGame started!")
     print("Enter moves in UCI format (e.g., 'e2e4') or SAN format (e.g., 'e4').")
     print("Type 'quit' to exit, 'undo' to take back a move, or 'board' to display the board.")
+    print(f"Engine settings: depth={depth}, time_limit={time_limit}s")
 
     while not board.is_game_over():
         print_board(board.board)
@@ -86,6 +104,21 @@ def play_against_engine():
                         print("Took back your move.")
                     else:
                         print("No moves to undo.")
+                    continue
+
+                # Allow changing engine settings mid-game
+                if move_str == 'settings':
+                    try:
+                        new_depth = int(input(f"Enter new depth (current: {depth}): ") or str(depth))
+                        new_time = float(input(f"Enter new time limit (current: {time_limit}): ") or str(time_limit))
+                        if new_depth > 0 and new_time > 0:
+                            depth = new_depth
+                            time_limit = new_time
+                            print(f"Engine settings updated: depth={depth}, time_limit={time_limit}s")
+                        else:
+                            print("Invalid values. Settings unchanged.")
+                    except ValueError:
+                        print("Invalid input. Settings unchanged.")
                     continue
 
                 move = parse_move(move_str, board.board)

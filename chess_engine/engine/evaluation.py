@@ -12,6 +12,9 @@ from chess_engine.utils.piece_tables import (
     KING_END_GAME_TABLE
 )
 
+# Precompute square indices for faster lookup
+SQUARE_INDICES = {square: (square // 8, square % 8) for square in chess.SQUARES}
+
 def is_endgame(board):
     """
     Determine if the position is an endgame based on material.
@@ -25,16 +28,19 @@ def is_endgame(board):
     # Count the number of non-pawn pieces
     queens = (len(board.pieces(chess.QUEEN, chess.WHITE)) +
               len(board.pieces(chess.QUEEN, chess.BLACK)))
-    rooks = len(board.pieces(chess.ROOK, chess.WHITE)) + len(board.pieces(chess.ROOK, chess.BLACK))
-    minors = (
-        len(board.pieces(chess.BISHOP, chess.WHITE)) +
-        len(board.pieces(chess.BISHOP, chess.BLACK)) +
-        len(board.pieces(chess.KNIGHT, chess.WHITE)) +
-        len(board.pieces(chess.KNIGHT, chess.BLACK))
-    )
-
-    # Endgame if both sides have no queens or if both sides have at most one minor piece
-    return queens == 0 or (queens <= 1 and rooks <= 2 and minors <= 1)
+    
+    # If no queens, it's likely an endgame
+    if queens == 0:
+        return True
+        
+    # Count total material (excluding kings and pawns)
+    total_material = 0
+    for piece_type in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
+        for color in [chess.WHITE, chess.BLACK]:
+            total_material += len(board.pieces(piece_type, color)) * PIECE_VALUES[piece_type]
+    
+    # If total material is less than value of a rook + minor piece, it's endgame
+    return total_material < (PIECE_VALUES[chess.ROOK] + PIECE_VALUES[chess.KNIGHT])
 
 def evaluate_position(board):
     """
@@ -49,6 +55,7 @@ def evaluate_position(board):
     Returns:
         int: The evaluation score in centipawns
     """
+    # Quick checks for terminal positions
     if board.is_checkmate():
         # Return a large value if checkmate, considering who is checkmated
         return -10000 if board.turn == chess.WHITE else 10000
@@ -57,19 +64,28 @@ def evaluate_position(board):
             board.is_fifty_moves() or board.is_repetition()):
         return 0  # Draw
 
-    # Material evaluation
-    material_score = 0
-
-    # Piece-square evaluation
-    position_score = 0
-
+    # Determine if we're in an endgame
     endgame = is_endgame(board)
 
-    # Iterate through all pieces on the board
+    # Combined evaluation loop for material and position
+    material_score = 0
+    position_score = 0
+
+    # Piece counts for faster endgame detection in future calls
+    white_pieces = {piece_type: 0 for piece_type in range(1, 7)}
+    black_pieces = {piece_type: 0 for piece_type in range(1, 7)}
+
+    # Process all pieces in a single loop
     for square in chess.SQUARES:
         piece = board.piece_at(square)
         if piece is None:
             continue
+
+        # Count pieces
+        if piece.color == chess.WHITE:
+            white_pieces[piece.piece_type] += 1
+        else:
+            black_pieces[piece.piece_type] += 1
 
         # Material value
         value = PIECE_VALUES[piece.piece_type]
@@ -86,33 +102,20 @@ def evaluate_position(board):
 
         # Get the position value from the piece-square table
         # For black pieces, we need to flip the square index
-        rank = square // 8
-        file = square % 8
+        rank, file = SQUARE_INDICES[square]
 
         if piece.color == chess.WHITE:
             position_score += table[7 - rank][file]
         else:
             position_score -= table[rank][file]
 
-    # Mobility evaluation (number of legal moves)
+    # Simplified mobility evaluation - just count legal moves for the side to move
+    # This is much faster than switching sides and counting both
     mobility_score = 0
-
-    # Store the current turn
-    current_turn = board.turn
-
-    # Count white's moves
-    board.turn = chess.WHITE
-    white_moves = len(list(board.legal_moves))
-
-    # Count black's moves
-    board.turn = chess.BLACK
-    black_moves = len(list(board.legal_moves))
-
-    # Restore the original turn
-    board.turn = current_turn
-
-    # 5 centipawns per move advantage
-    mobility_score = (white_moves - black_moves) * 5
+    if board.turn == chess.WHITE:
+        mobility_score = len(list(board.legal_moves)) * 3
+    else:
+        mobility_score = -len(list(board.legal_moves)) * 3
 
     # Combine all evaluation components
     total_score = material_score + position_score + mobility_score
